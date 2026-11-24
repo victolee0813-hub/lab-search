@@ -60,16 +60,14 @@ def discover(session):
    title=clean(a.get_text()); kind=next((k for k,v in KINDS.items() if re.search(v,title)),None)
    if not kind or kind in found:continue
    detail=urljoin(BOARD,a['href']);assert '/brd/m_627/view.do' in detail
-   ds=BeautifulSoup(fetch(session,detail).content,'html.parser'); candidates=[]
-   for link in ds.select('a[href]'):
-    href=link['href']; label=clean(link.get_text()); parent=link
-    for _ in range(4):
-     if parent is None:break
-     txt=clean(parent.get_text()); pdfs=re.findall(r'[^\s]*\.pdf',txt,re.I)
-     if pdfs and re.search(r'다운\s*받기|다운로드',label+' '+str(link.get('title',''))) and not re.search(r'\.hwpx?',txt,re.I) and '/brd/m_627/down.do' in href:
-      candidates.append(urljoin(detail,href));break
-     parent=parent.parent
-   candidates=list(dict.fromkeys(candidates));assert len(candidates)==1,(kind,'PDF link',candidates)
+   ds=BeautifulSoup(fetch(session,detail).content,'html.parser')
+   links=list(dict.fromkeys(urljoin(detail,link['href']) for link in ds.select('a[href]') if urlparse(urljoin(detail,link['href'])).path=='/brd/m_627/down.do' and urlparse(urljoin(detail,link['href'])).hostname in ('www.mfds.go.kr','mfds.go.kr') and urlparse(urljoin(detail,link['href'])).scheme=='https'))
+   candidates=[]
+   for url in links:
+    response=fetch(session,url)
+    if response.content.startswith(b'%PDF-'):
+     candidates.append(url)
+   assert len(candidates)==1,(kind,'PDF link',candidates,'attachment links',links)
    date=re.search(r'(20\d\d)\.\s*(\d+)\.\s*(\d+)',title);assert date
    day=f'{int(date[1]):04d}-{int(date[2]):02d}-{int(date[3]):02d}'
    found[kind]=(detail,candidates[0],day,title)
@@ -78,7 +76,7 @@ def discover(session):
 
 def main():
  old=read('data.json'); status=read('status.json'); history=read('changes.json'); now=datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds'); errors=[]; new=[]
- session=requests.Session();session.headers['User-Agent']='LabSearch public registry monitor (daily)';
+ session=requests.Session();session.headers['User-Agent']='LabSearch public registry monitor (daily)' ; session.headers['Referer']=BOARD;
  try: found=discover(session)
  except Exception as e:found={};errors.append(str(e))
  for kind,(detail,url,day,title) in found.items():
