@@ -43,7 +43,8 @@ function renderMore(){
  return `<article><div class="row"><h3>${offset+i+1}. ${esc(a.name)}</h3><span class="tag">${esc(f)}</span></div><p>${esc(a.address)}<br><strong class="phone">☎ ${esc(a.phone||'[확인필요]')}</strong></p><p class="muted">근사 직선거리 ${Number.isFinite(a.d)?Math.round(a.d)+' km':'[확인필요]'} · 지정 ${esc(a.id)} · 유효기간 ${esc(a.expiry)}${a.v===null?' [확인필요]':''} · ${esc(a.source)} 목록 ${a.page}쪽</p><p class="scope"><b>지정 범위:</b> ${esc(a.scope)}</p>${mixed?'<p class="muted">복수 분야 지정기관: 누락 방지를 위해 기관 전체 항목을 표시하며, 선택 분야별 적용 여부는 [확인필요].</p>':''}${cos?'':`<details><summary>기관 전체 시험항목 ${a.tests.length}건 보기</summary><ul>${evidence||'<li>[확인필요] 세부 항목 미기재</li>'}</ul></details>`}</article>`;
  }).join('')||'<section>해당 분야에 표시할 후보가 없습니다. 최신 지정현황 [확인필요].</section>');
 }
-$('search').onsubmit=e=>{e.preventDefault(); $('inquiryNotice').hidden=false; $('results').replaceChildren(); shown=0; current=searchInstitutions($('region').value,$('field').value); renderMore(); requestAnimationFrame(()=>$('status').scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));};
+function runSearch(move=false){ $('inquiryNotice').hidden=false; $('results').replaceChildren(); shown=0; current=searchInstitutions($('region').value,$('field').value); renderMore(); if(move) requestAnimationFrame(()=>$('status').scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})); }
+$('search').onsubmit=e=>{e.preventDefault();runSearch(true);};
 $('more').onclick=renderMore;
 reset();
 const activeNames={"의약품 등": "(지정현황)의약품+등+시험검사기관+현황+목록(2026.+11.+5.).pdf", "화장품": "화장품+시험검사기관(2026.+10.+29.).pdf"};
@@ -61,7 +62,7 @@ const cos=source==='화장품';const isList=!detail&&(/지정번호/.test(all.re
 else if(!cos){detail=true;const title=lines(text.filter(t=>t.y<75)).find(s=>/^\d+\s*\./.test(s));if(title){const clean=s=>s.normalize('NFKC').replace(/주식회사|\(주\)|\(재\)|\(사\)|[^가-힣a-zA-Z0-9]/g,'').toLowerCase();const label=clean(title.replace(/^\d+\s*\./,''));const matches=records.filter(r=>{const k=clean(r.name);return k.length>3&&(label.includes(k)||k.includes(label))});const n=Number(title.match(/^\d+/)[0]);active=matches.length===1?matches[0]:matches.find(r=>r.n===n)||null;if(!active){const r=records.find(r=>r.n===n);if(r&&/한의약|한의학/.test(title)&&/한의약/.test(r.name))active=r;else throw Error(`${p}쪽 시험항목의 기관명을 자동 연결할 수 없습니다: ${title}`);}}
 if(!active)throw Error(`${p}쪽 시험항목 연결 실패`);const b=cuts(220,560);for(let i=0;i<b.length-1;i++){const lo=b[i],hi=b[i+1];if(hi-lo<5)continue;const row=lines(band(text,lo,hi,75,570)).join(' ').trim();if(!row||/^(시험\s*검사\s*항목|시험[·‧]\s*검사\s*항목|재품군|제품군)/.test(row)||/시험\s*[·‧]?\s*검사\s*항목$/.test(row))continue;active.tests.push([row,p,'']);}}
 }if(records.length!==expected||new Set(records.map(r=>r.n)).size!==expected)throw Error(`표에서 ${records.length}건을 읽었으나 원문은 ${expected}건입니다.`);if(records.some(r=>!r.tests.length))throw Error('세부 시험항목이 누락된 기관이 있습니다.');return {source,records};}finally{await doc.destroy()}}
-$('upload').onclick=()=>$('pdfFiles').click();$('pdfFiles').onchange=async()=>{const files=[...$('pdfFiles').files];if(!files.length)return;const msg=$('uploadFeedback');msg.hidden=false;if(files.length>2){msg.textContent='PDF는 최대 2개 선택하세요.';return} $('upload').disabled=true;msg.textContent='PDF 읽는 중…';try{const parsed=[];for(const f of files)parsed.push(await parsePDF(f));if(new Set(parsed.map(x=>x.source)).size!==parsed.length)throw Error('같은 종류의 PDF를 중복 선택했습니다.');const replaced=new Set(parsed.map(x=>x.source));labs=labs.filter(r=>!replaced.has(r.source)).concat(parsed.flatMap(x=>x.records));parsed.forEach((entry,i)=>{activeNames[entry.source]=files[i].name;});showActiveFiles();$('syncBadge').textContent='수동 자료 사용';$('syncBadge').className='sync-badge pending';for(const x of parsed){$(x.source==='화장품'?'cosDate':'drugDate').textContent='수동 자료 [확인필요]';}msg.textContent=`갱신 완료: ${parsed.map(x=>x.source+' '+x.records.length+'건').join(', ')} · 자동 추출 내용 [확인필요]`;$('sourceFooter').textContent=`현재 자료: ${files.map(f=>f.name).join(', ')} (미교체 분야는 기존 자료 유지). 개인정보 입력·저장·전송 없음.`;$('search').requestSubmit()}catch(e){msg.textContent='갱신 실패 [확인필요]: '+e.message+' 기존 자료를 유지합니다.'}finally{$('upload').disabled=false;$('pdfFiles').value=''}};
+$('upload').onclick=()=>$('pdfFiles').click();$('pdfFiles').onchange=async()=>{const files=[...$('pdfFiles').files];if(!files.length)return;const msg=$('uploadFeedback');msg.hidden=false;if(files.length>2){msg.textContent='PDF는 최대 2개 선택하세요.';return} $('upload').disabled=true;msg.textContent='PDF 읽는 중…';try{const parsed=[];for(const f of files)parsed.push(await parsePDF(f));if(new Set(parsed.map(x=>x.source)).size!==parsed.length)throw Error('같은 종류의 PDF를 중복 선택했습니다.');const replaced=new Set(parsed.map(x=>x.source));labs=labs.filter(r=>!replaced.has(r.source)).concat(parsed.flatMap(x=>x.records));parsed.forEach((entry,i)=>{activeNames[entry.source]=files[i].name;});showActiveFiles();$('syncBadge').textContent='수동 자료 사용';$('syncBadge').className='sync-badge pending';for(const x of parsed){$(x.source==='화장품'?'cosDate':'drugDate').textContent='수동 자료 [확인필요]';}msg.textContent=`갱신 완료: ${parsed.map(x=>x.source+' '+x.records.length+'건').join(', ')} · 자동 추출 내용 [확인필요]`;$('sourceFooter').textContent=`현재 자료: ${files.map(f=>f.name).join(', ')} (미교체 분야는 기존 자료 유지). 개인정보 입력·저장·전송 없음.`;runSearch(false)}catch(e){msg.textContent='갱신 실패 [확인필요]: '+e.message+' 기존 자료를 유지합니다.'}finally{$('upload').disabled=false;$('pdfFiles').value=''}};
 
 
 async function refreshShared(){
@@ -83,9 +84,14 @@ async function refreshShared(){
  $('history').replaceChildren();if(!history.length)$('history').textContent='기록된 변경사항 없음';
  for(const entry of history){const p=document.createElement('p');p.textContent=entry.time+' | '+entry.source; $('history').append(p);const ul=document.createElement('ul');for(const c of entry.changes){const li=document.createElement('li');li.textContent=c.type+' · '+c.name+(c.fields.length?' ('+c.fields.join(', ')+')':'');ul.append(li)}$('history').append(ul)}
  $('sourceFooter').textContent='자료: 식품의약품안전처 공개 지정현황. 자동 추출 결과는 원문과 대조 필요. 개인 정보 입력·저장·전송 없음.';
- $('uploadStatus').textContent='공동 지정현황 자료 사용 중'; $('search').requestSubmit();
+ $('uploadStatus').textContent='공동 지정현황 자료 사용 중'; runSearch(false);
  }catch(e){$('syncBadge').textContent='[확인필요]';$('syncBadge').className='sync-badge error';$('syncStatus').textContent='[확인필요] 공동 자료 읽기 실패. '+(labs.length?'현재 자료 유지':'웹주소에서 접속하세요.');}
  finally{$('refresh').disabled=false;$('search').querySelector('button').disabled=!labs.length;}
 }
-$('refresh').onclick=refreshShared;refreshShared();
+$('refresh').onclick=refreshShared;
+if ('scrollRestoration' in history) history.scrollRestoration='manual';
+function goTop(){window.scrollTo({top:0,left:0,behavior:'instant'});}
+goTop();
+refreshShared();
+window.addEventListener('pageshow',e=>{if(e.persisted)goTop();else if(!window.scrollY)goTop();});
 </script></body></html>
